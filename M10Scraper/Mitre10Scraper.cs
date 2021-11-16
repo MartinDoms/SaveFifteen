@@ -28,9 +28,11 @@ namespace SaveFifteen.M10Scraper
             Console.ReadLine();
         }
 
+        private static int requestCount = 0;
         private Task<IDocument> Get(string url, IBrowsingContext context)
         {
-            Console.WriteLine($"Fetching {url}");
+            requestCount++;
+            Console.WriteLine($"{requestCount} |\t {url}");
             return context.OpenAsync(url);
         }
 
@@ -75,7 +77,8 @@ namespace SaveFifteen.M10Scraper
 
                     var productName = GetProductName(productDocument);
                     var productSku = GetProductSku(productDocument);
-                    return new Product(new Uri(productDocument.Url), productName, productSku);
+                    var productModel = GetProductModel(productDocument);
+                    return new Product(new Uri(productDocument.Url), productName, productSku, productModel);
                 }));
             }
 
@@ -127,13 +130,19 @@ namespace SaveFifteen.M10Scraper
         private string GetProductName(IDocument productPage)
         {
             var productNameSelector = ".product--title";
-            return productPage.QuerySelector(productNameSelector).TextContent;
+            return productPage.QuerySelector(productNameSelector).TextContent.Trim();
         }
 
         private string GetProductSku(IDocument productPage)
         {
             var productSkuSelector = ".product--sku";
-            return productPage.QuerySelector(productSkuSelector).TextContent;
+            return productPage.QuerySelector(productSkuSelector).TextContent.Trim();
+        }
+
+        private string GetProductModel(IDocument productPage)
+        {
+            var productSkuSelector = ".product--sku";
+            return productPage.QuerySelector(productSkuSelector).TextContent.Trim();
         }
 
         private string GetTitle(IDocument page)
@@ -203,12 +212,14 @@ namespace SaveFifteen.M10Scraper
         public Uri Url { get; set; }
         public string Name { get; set; }
         public string Sku { get; set; }
+        public string Model { get; set; }
 
-        public Product(Uri url, string name, string sku)
+        public Product(Uri url, string name, string sku, string model)
         {
             Url = url;
             Name = name;
             Sku = sku;
+            Model = model;
         }
     }
 }
