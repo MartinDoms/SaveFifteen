@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 using System.Linq;
+using SaveFifteen.M10Scraper.Pages;
 
 namespace SaveFifteen.M10Scraper
 {
@@ -20,12 +21,22 @@ namespace SaveFifteen.M10Scraper
         {
             var context = BrowsingContext.New(Configuration.Default.WithDefaultLoader());
 
-            var startingPage = await GetDepartmentListPage(context);
-            var allDepartments = await GetAllDepartments(startingPage, context);
-            var allProductPages = await GetAllProducts(allDepartments, context);
+            var frontPage = new ShopPage(START_URL, context);
+            var topLevelDepartments = (await frontPage.GetAllDepartments()).Skip(2).Take(2);
+            var departmentTasks = topLevelDepartments.Select(dpt => dpt.GetAllSubDepartmentPages());
+            var departmentLists = await Task.WhenAll(departmentTasks);
+            var allDepartments = departmentLists.SelectMany(departments => departments);
 
-            Console.WriteLine("Done!");
-            Console.ReadLine();
+            var productListPageTasks = allDepartments.Select(dpt => dpt.GetAllProductListPages()).ToList();
+            var pageList = await Task.WhenAll(productListPageTasks);
+            var productListPages = pageList.SelectMany(pageList => pageList);
+
+            var allProductPageTasks = productListPages.Select(listPage => listPage.GetAllProducts());
+            var allProductPages = (await Task.WhenAll(allProductPageTasks)).SelectMany(prod => prod);
+
+            Console.WriteLine($"{allProductPages.Count()} product pages found");
+
+            //return allProductPages;
         }
 
         private static int requestCount = 0;
@@ -36,7 +47,7 @@ namespace SaveFifteen.M10Scraper
             return context.OpenAsync(url);
         }
 
-        private async Task<IEnumerable<Product>> GetAllProducts(IEnumerable<Subdepartment> allDepartments, IBrowsingContext context)
+        private async Task<IEnumerable<Product>> GetAllProducts(IEnumerable<Department> allDepartments, IBrowsingContext context)
         {
             var result = new List<Product>();
             foreach (var department in allDepartments)
@@ -90,43 +101,6 @@ namespace SaveFifteen.M10Scraper
             return Get(productUrl, context);
         }
 
-        private async Task<IEnumerable<Subdepartment>> GetAllDepartments(IDocument startPage, IBrowsingContext context)
-        {
-            var departments = GetDepartmentUrls(startPage);
-            var result = new List<Subdepartment>();
-            foreach (var department in departments.Take(2)) 
-            {
-                result.AddRange(await GetSubDepartmentPages(department, context));
-            }
-
-            return result;
-        }
-
-        private async Task<IEnumerable<Subdepartment>> GetSubDepartmentPages(string departmentUrl, IBrowsingContext context)
-        {
-            var departmentPage = await Get(departmentUrl, context);
-            var departmentTitle = GetTitle(departmentPage);
-            var subDepartmentUrls = GetDepartmentUrls(departmentPage);
-
-            var subdepartmentTasks = new List<Task<IDocument>>();
-            foreach (var url in subDepartmentUrls)
-            {
-                subdepartmentTasks.Add(Get(url, context));
-            }
-            var completedTasks = await Task.WhenAll(subdepartmentTasks);
-
-            var result = new List<Subdepartment>();
-            foreach (var subdepartmentPage in completedTasks)
-            {
-                var subdepartmentName = GetTitle(subdepartmentPage);
-                var subdepartment = new Subdepartment(subdepartmentName, subdepartmentPage);
-                Console.WriteLine($"Found department {departmentTitle} -> {subdepartmentName} | {subdepartment.Url}");
-                result.Add(subdepartment);
-            }
-
-            return result;
-        }
-
         private string GetProductName(IDocument productPage)
         {
             var productNameSelector = ".product--title";
@@ -145,33 +119,12 @@ namespace SaveFifteen.M10Scraper
             return productPage.QuerySelector(productSkuSelector).TextContent.Trim();
         }
 
-        private string GetTitle(IDocument page)
-        {
-            return Regex.Replace(page.Title, "\\s*\\|.+", "");
-        }
-
         private Task<IDocument> GetDepartmentListPage(IBrowsingContext context)
         {
             return Get(START_URL, context);
         }
 
-        private IEnumerable<string> GetDepartmentUrls(IDocument page)
-        {
-            var linkSelector = "#department-count-component li a";
-            // selector for department links from shop and department screens "#department-count-component li a"
-            var links = page.QuerySelectorAll(linkSelector);
-
-            foreach (var link in links)
-            {
-                var href = link.Attributes["href"].Value;
-                if (Regex.Match(href, "^/shop").Success)
-                {
-                    yield return BASE_URL + link.Attributes["href"].Value;
-                }
-            }
-        }
-
-        private int GetPageCount(Subdepartment department)
+        private int GetPageCount(Department department)
         {
             var document = department.Document;
 
@@ -194,20 +147,20 @@ namespace SaveFifteen.M10Scraper
 
     }
 
-    struct Subdepartment
+    public struct Department
     {
         public string SubdepartmentName { get; set; }
         public IDocument Document { get; set; }
         public Uri Url { get { return new Uri(Document.Url); } }
 
-        public Subdepartment(string subdepartmentName, IDocument department)
+        public Department(string subdepartmentName, IDocument department)
         {
             SubdepartmentName = subdepartmentName;
             Document = department;
         }
     }
 
-    struct Product
+    public struct Product
     {
         public Uri Url { get; set; }
         public string Name { get; set; }
