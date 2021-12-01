@@ -21,7 +21,7 @@ namespace SaveFifteen.M10Scraper.Pages
             
             var productTasks = new List<Task<ProductPage>>();
 
-            return pageUrls.Select(url => new ProductPage(url.Attributes["href"].Value, Context));
+            return pageUrls.Select(url => new ProductPage(BASE_URL + url.Attributes["href"].Value, Context));
         }
     }
 }
