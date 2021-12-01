@@ -23,7 +23,7 @@ namespace SaveFifteen.M10Scraper.Pages
         
 
         private static int fetches = 0;
-        internal async Task<IDocument> Fetch(Boolean force = false)
+        internal async Task<IDocument> Fetch(bool force = false)
         {
             if (_document == null || force)
             {
